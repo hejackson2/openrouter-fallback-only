@@ -36,11 +36,19 @@ From the repo root:
 bash install.sh
 ```
 
-That copies the skill and script into your Hermes home and tells you how to register the cron job.
+That copies the skill and script into your Hermes home and prints the exact setup steps.
 
-## Register the cron
+## Full setup after install
 
-After install:
+To make Hermes automatically fall back to the best free OpenRouter models when your primary model fails or hits quota/rate limits:
+
+1. Add your OpenRouter API key:
+
+```bash
+hermes config set OPENROUTER_API_KEY sk-or-...
+```
+
+2. Register the refresh cron:
 
 ```bash
 hermes cron create '0 7 * * *' \
@@ -50,7 +58,24 @@ hermes cron create '0 7 * * *' \
   --deliver telegram
 ```
 
+3. Prime `fallback_providers` immediately instead of waiting for the first scheduled run:
+
+```bash
+python3 ~/.hermes/scripts/openrouter_fallback_check.py
+```
+
+4. Verify your main model was preserved and fallbacks were populated:
+
+```bash
+hermes config get model
+hermes config get fallback_providers
+```
+
 Adjust `--deliver` for your preferred Hermes gateway target.
+
+## What automatic fallback looks like
+
+After setup, Hermes continues using your existing primary model. If that provider fails with a fallback-triggering error (for example quota exhaustion or rate limiting), Hermes will try the OpenRouter free models currently listed in `fallback_providers`.
 
 ## Optional chain length
 

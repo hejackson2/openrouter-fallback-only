@@ -49,9 +49,18 @@ Use this skill when you need to build, inspect, or rerun the deterministic Herme
 - Deliver: home channel / gateway target when available
 - Name: `openrouter-fallback-rotator`
 
+## Setup checklist
+
+1. Install with `bash install.sh`.
+2. Add `OPENROUTER_API_KEY` to `~/.hermes/.env` (or `hermes config set OPENROUTER_API_KEY ...`).
+3. Create the cron job: `hermes cron create '0 7 * * *' --name openrouter-fallback-rotator --script openrouter_fallback_check.py --no-agent --deliver telegram`.
+4. Prime the fallback chain immediately with `python3 ~/.hermes/scripts/openrouter_fallback_check.py`.
+5. Confirm `hermes config get fallback_providers` is non-empty.
+
 ## Verification
 
 1. Run once with a valid OpenRouter key.
 2. Run once with an invalid key and confirm fail-closed behavior.
 3. Run again with the valid key and confirm idempotency.
 4. Confirm `model.provider` and `model.default` are unchanged.
+5. Confirm `fallback_providers` contains OpenRouter free models.
