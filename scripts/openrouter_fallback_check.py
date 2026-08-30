@@ -388,14 +388,22 @@ def summarize_fallbacks(fallbacks: list[dict[str, str]]) -> str:
     return ", ".join(f"{entry['model']}" for entry in fallbacks)
 
 
-def sync_cron_pins() -> None:
-    """Pin the two weekly agent jobs to the new first fallback.
+def sync_cron_pins_enabled() -> bool:
+    raw = os.environ.get("OPENROUTER_SYNC_CRON_PINS", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
-    Delegated to a small external script so this rotator stays focused on
-    the chain; the script knows which job IDs to update and how to call
-    `hermes cron edit`. Errors here are non-fatal — the chain is already
-    written and the cron jobs can be re-pinned manually if needed.
+
+def sync_cron_pins() -> None:
+    """Optionally pin selected cron jobs to the new first fallback.
+
+    This is opt-in. Set OPENROUTER_SYNC_CRON_PINS=1 to enable it. The
+    helper is delegated to a small external script so the rotator stays
+    focused on chain selection. Errors here are non-fatal — the chain is
+    already written and the cron jobs can be re-pinned manually if needed.
     """
+    if not sync_cron_pins_enabled():
+        print("sync_cron_pins: disabled (set OPENROUTER_SYNC_CRON_PINS=1 to enable)")
+        return
     pin_script = hermes_home() / "scripts" / "pin_cron_to_first_fallback.py"
     if not pin_script.exists():
         print("sync_cron_pins: pin script not found; skipping")

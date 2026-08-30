@@ -35,6 +35,7 @@ fi
 echo "Optional env knobs:"
 echo "  OPENROUTER_FALLBACK_CHAIN_LENGTH=3"
 echo "  HERMES_TIER_CONFIG_PATH=~/.hermes/openrouter_tiers.json"
+echo "  OPENROUTER_SYNC_CRON_PINS=1   # optional; default is disabled"
 echo
 echo "If you want custom model scoring, copy the example tier file:"
 echo "  cp $TIER_EXAMPLE_PATH ~/.hermes/openrouter_tiers.json"

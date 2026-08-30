@@ -7,7 +7,7 @@ Unlike the original primary-model rotator, this variant preserves your existing 
 ## What’s included
 
 - `scripts/openrouter_fallback_check.py` — the executable cron script
-- `scripts/pin_cron_to_first_fallback.py` — optional helper that repins selected cron jobs to the new top fallback
+- `scripts/pin_cron_to_first_fallback.py` — optional helper that can repin selected cron jobs to the new top fallback when explicitly enabled
 - `openrouter_tiers.example.json` — example tier list for capability-based scoring
 - `skills/openrouter-fallback-rotator/SKILL.md` — the Hermes skill doc for discoverability
 - `install.sh` — local installer for Hermes users
@@ -33,8 +33,9 @@ The rotator:
 - preserves `model.provider`, `model.default`, and `model.base_url`
 - fails closed and leaves config untouched if validation fails
 - stores the previous selection in a state file for diffing
+- leaves cron-job model pins alone unless you explicitly enable repinning with `OPENROUTER_SYNC_CRON_PINS=1`
 
-If `scripts/pin_cron_to_first_fallback.py` is installed in `~/.hermes/scripts/`, the rotator also attempts to repin selected weekly cron jobs to whatever landed in `fallback_providers[0]`.
+The helper script is installed for users who want that behavior, but automatic cron repinning is disabled by default.
 
 ## Prerequisites
 
@@ -98,6 +99,7 @@ Adjust `--deliver` for your preferred Hermes gateway target.
 ```bash
 export OPENROUTER_FALLBACK_CHAIN_LENGTH=3
 export HERMES_TIER_CONFIG_PATH=~/.hermes/openrouter_tiers.json
+export OPENROUTER_SYNC_CRON_PINS=1   # optional; default is disabled
 ```
 
 ## What automatic fallback looks like

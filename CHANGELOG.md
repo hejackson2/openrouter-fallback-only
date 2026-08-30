@@ -6,6 +6,10 @@ The format is loosely based on Keep a Changelog and uses reverse chronological o
 
 ## [Unreleased]
 
+### Changed
+- Updated `scripts/openrouter_fallback_check.py` to make cron-job repinning opt-in via `OPENROUTER_SYNC_CRON_PINS=1` instead of automatic.
+- Updated `README.md` and `skills/openrouter-fallback-rotator/SKILL.md` to document that cron jobs follow the primary model by default unless repinning is explicitly enabled.
+
 ## [2026-08-30]
 
 ### Added
