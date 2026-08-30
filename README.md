@@ -12,6 +12,7 @@ Unlike the original primary-model rotator, this variant preserves your existing 
 - `skills/openrouter-fallback-rotator/SKILL.md` — the Hermes skill doc for discoverability
 - `install.sh` — local installer for Hermes users
 - `tests/test_openrouter_fallback_check.py` — regression tests for the rotator
+- `CHANGELOG.md` — reverse-chronological project change history
 
 ## Current behavior
 
