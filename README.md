@@ -1,24 +1,39 @@
 # OpenRouter Fallback Rotator for Hermes
 
-A deterministic, script-only Hermes cron job that scans OpenRouter free models, probes them, and updates only the Hermes fallback provider chain.
+A deterministic, script-only Hermes cron job that refreshes only the fallback provider chain from OpenRouter free models.
 
 Unlike the original primary-model rotator, this variant preserves your existing main model/provider and only refreshes the secondary models Hermes will try if the primary fails.
 
 ## What’s included
 
 - `scripts/openrouter_fallback_check.py` — the executable cron script
+- `scripts/pin_cron_to_first_fallback.py` — optional helper that repins selected cron jobs to the new top fallback
+- `openrouter_tiers.example.json` — example tier list for capability-based scoring
 - `skills/openrouter-fallback-rotator/SKILL.md` — the Hermes skill doc for discoverability
 - `install.sh` — local installer for Hermes users
+- `tests/test_openrouter_fallback_check.py` — regression tests for the rotator
 
-## Behavior
+## Current behavior
 
-- Fetches OpenRouter models from `/api/v1/models`
-- Keeps only `:free` models with sane metadata
-- Probes candidates with a minimal chat completion
-- Ranks healthy models by unthrottled status, then context window, then recency
-- Writes the top N free models into `fallback_providers`
-- Preserves `model.provider`, `model.default`, and `model.base_url`
-- Fails closed and leaves config untouched if validation fails
+The rotator:
+
+- fetches OpenRouter models from `/api/v1/models`
+- keeps only `:free` models with sane metadata and zero pricing
+- reads an optional tier list from `~/.hermes/openrouter_tiers.json`
+- drops models below the configured minimum tier score or context length
+- probes candidates with a minimal chat completion
+- ranks eligible models by:
+  - unthrottled before throttled
+  - higher tier score first
+  - larger context window first
+  - newer `created` first
+  - model id as a final stable tie-break
+- writes the top N free models into `fallback_providers`
+- preserves `model.provider`, `model.default`, and `model.base_url`
+- fails closed and leaves config untouched if validation fails
+- stores the previous selection in a state file for diffing
+
+If `scripts/pin_cron_to_first_fallback.py` is installed in `~/.hermes/scripts/`, the rotator also attempts to repin selected weekly cron jobs to whatever landed in `fallback_providers[0]`.
 
 ## Prerequisites
 
@@ -36,11 +51,9 @@ From the repo root:
 bash install.sh
 ```
 
-That copies the skill and script into your Hermes home and prints the exact setup steps.
+That copies the script, helper, skill, and example tier file into your Hermes home and prints the exact setup steps.
 
 ## Full setup after install
-
-To make Hermes automatically fall back to the best free OpenRouter models when your primary model fails or hits quota/rate limits:
 
 1. Add your OpenRouter API key:
 
@@ -48,7 +61,13 @@ To make Hermes automatically fall back to the best free OpenRouter models when y
 hermes config set OPENROUTER_API_KEY sk-or-...
 ```
 
-2. Register the refresh cron:
+2. Optionally customize the tier list:
+
+```bash
+cp ~/.hermes/openrouter_tiers.example.json ~/.hermes/openrouter_tiers.json
+```
+
+3. Register the refresh cron:
 
 ```bash
 hermes cron create '0 7 * * *' \
@@ -58,13 +77,13 @@ hermes cron create '0 7 * * *' \
   --deliver telegram
 ```
 
-3. Prime `fallback_providers` immediately instead of waiting for the first scheduled run:
+4. Prime `fallback_providers` immediately instead of waiting for the first scheduled run:
 
 ```bash
 python3 ~/.hermes/scripts/openrouter_fallback_check.py
 ```
 
-4. Verify your main model was preserved and fallbacks were populated:
+5. Verify your main model was preserved and fallbacks were populated:
 
 ```bash
 hermes config get model
@@ -73,17 +92,16 @@ hermes config get fallback_providers
 
 Adjust `--deliver` for your preferred Hermes gateway target.
 
-## What automatic fallback looks like
-
-After setup, Hermes continues using your existing primary model. If that provider fails with a fallback-triggering error (for example quota exhaustion or rate limiting), Hermes will try the OpenRouter free models currently listed in `fallback_providers`.
-
-## Optional chain length
-
-By default the script writes 3 fallback models. To change that, set:
+## Optional environment knobs
 
 ```bash
-export OPENROUTER_FALLBACK_CHAIN_LENGTH=5
+export OPENROUTER_FALLBACK_CHAIN_LENGTH=3
+export HERMES_TIER_CONFIG_PATH=~/.hermes/openrouter_tiers.json
 ```
+
+## What automatic fallback looks like
+
+After setup, Hermes continues using your existing primary model. If that provider fails with a fallback-triggering error, Hermes will try the OpenRouter free models currently listed in `fallback_providers`.
 
 ## Filesystem layout
 
@@ -92,9 +110,13 @@ openrouter-fallback-rotator/
 ├── README.md
 ├── LICENSE
 ├── install.sh
+├── openrouter_tiers.example.json
 ├── scripts/
-│   └── openrouter_fallback_check.py
-└── skills/
-    └── openrouter-fallback-rotator/
-        └── SKILL.md
+│   ├── openrouter_fallback_check.py
+│   └── pin_cron_to_first_fallback.py
+├── skills/
+│   └── openrouter-fallback-rotator/
+│       └── SKILL.md
+└── tests/
+    └── test_openrouter_fallback_check.py
 ```

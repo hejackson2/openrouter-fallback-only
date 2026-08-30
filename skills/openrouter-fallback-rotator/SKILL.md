@@ -1,66 +1,66 @@
 ---
 name: openrouter-fallback-rotator
-description: "Use when building the OpenRouter free-model fallback rotator."
-version: 1.0.0
-author: Hermes Agent
+description: "Use when ranking OpenRouter free-model fallbacks."
+version: 1.1.0
+author: Ed Jackson (hejackson2), Hermes Agent
 license: MIT
+platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [hermes, cron, openrouter, config, automation, fallback]
+    related_skills: [hermes-agent]
 ---
 
 # OpenRouter Fallback Rotator
 
-Use this skill when you need to build, inspect, or rerun the deterministic Hermes cron that selects the best healthy OpenRouter free models and writes them into Hermes fallback config.
+Use this skill when you need to build, inspect, or rerun the deterministic Hermes cron that selects the best OpenRouter free models and writes them into Hermes fallback config. This version preserves the primary model, supports an optional capability tier list, and can repin selected cron jobs to the top fallback after updates.
 
-## What it does
+## When to Use
 
-- Fetches OpenRouter `/models` with `OPENROUTER_API_KEY`
-- Filters `:free` models with sane metadata
-- Probes candidates with a minimal chat completion
-- Ranks healthy models by:
-  1. unthrottled before throttled
-  2. `context_length` descending
-  3. newer `created` first
-- Writes the top N models into `fallback_providers`
-- Preserves the current primary model under `model.*`
-- Stores the previous fallback selection in `~/.hermes/state/openrouter_fallback_rotator.json`
-- Backs up config to `~/.hermes/config.yaml.bak` before a successful update
+- You want Hermes fallback_providers refreshed from OpenRouter free models.
+- You need to inspect why one free model ranked above another.
+- You want to bias the rotator toward stronger free models with a local tier file.
+- You want selected cron jobs pinned to the current top fallback automatically.
+- Don't use for: changing the primary model or editing provider credentials.
 
-## Safety invariants
+## Prerequisites
 
-- Fail closed on any validation error
-- No LLM at execution time
-- Idempotent: repeated runs with the same selection do not rewrite config
-- Atomic writes only
-- No partial config updates
-- Primary model/provider are never rewritten
+- `OPENROUTER_API_KEY` must exist in `~/.hermes/.env` or the environment.
+- Run the repo installer with `terminal(command="bash install.sh", workdir="<repo-root>")` before using the cron job from a fresh Hermes install.
+- Optional: copy `openrouter_tiers.example.json` to `~/.hermes/openrouter_tiers.json` and edit scores.
 
-## Files
+## How to Run
 
-- Script: `~/.hermes/scripts/openrouter_fallback_check.py`
-- State: `~/.hermes/state/openrouter_fallback_rotator.json`
-- Backup: `~/.hermes/config.yaml.bak`
+- `terminal(command="python3 ~/.hermes/scripts/openrouter_fallback_check.py", timeout=120)`
+- `terminal(command="hermes fallback list", timeout=120)`
+- `terminal(command="python3 ~/.hermes/scripts/pin_cron_to_first_fallback.py", timeout=120)`
 
-## Cron shape
+## Quick Reference
 
-- Schedule: `0 7 * * *`
-- Mode: `no_agent=True`
-- Deliver: home channel / gateway target when available
-- Name: `openrouter-fallback-rotator`
+- Refresh chain now: `terminal(command="python3 ~/.hermes/scripts/openrouter_fallback_check.py", timeout=120)`
+- Show effective chain: `terminal(command="hermes fallback list", timeout=120)`
+- Install the packaged files: `terminal(command="bash install.sh", workdir="<repo-root>", timeout=120)`
+- Override chain length: `terminal(command="OPENROUTER_FALLBACK_CHAIN_LENGTH=5 python3 ~/.hermes/scripts/openrouter_fallback_check.py", timeout=120)`
+- Use a custom tier file: `terminal(command="HERMES_TIER_CONFIG_PATH=~/.hermes/openrouter_tiers.json python3 ~/.hermes/scripts/openrouter_fallback_check.py", timeout=120)`
 
-## Setup checklist
+## Procedure
 
-1. Install with `bash install.sh`.
-2. Add `OPENROUTER_API_KEY` to `~/.hermes/.env` (or `hermes config set OPENROUTER_API_KEY ...`).
-3. Create the cron job: `hermes cron create '0 7 * * *' --name openrouter-fallback-rotator --script openrouter_fallback_check.py --no-agent --deliver telegram`.
-4. Prime the fallback chain immediately with `python3 ~/.hermes/scripts/openrouter_fallback_check.py`.
-5. Confirm `hermes config get fallback_providers` is non-empty.
+1. Verify `OPENROUTER_API_KEY` is available and the script is installed. Completion criterion: `python3 ~/.hermes/scripts/openrouter_fallback_check.py` can start without a missing-key error.
+2. Optionally create `~/.hermes/openrouter_tiers.json` from `openrouter_tiers.example.json` and adjust model scores. Completion criterion: the JSON parses and the desired models have the intended scores.
+3. Run the rotator script. Completion criterion: it prints either `no change` or a refreshed fallback list with fetched and eligible counts.
+4. Confirm `fallback_providers` changed as expected without rewriting `model.provider` or `model.default`. Completion criterion: `hermes fallback list` shows the intended order and the primary model is unchanged.
+5. If cron pinning is enabled, review the helper output or run the pin helper directly. Completion criterion: each target cron job reports success or a clear failure reason.
+
+## Pitfalls
+
+- The tier file is optional, but malformed JSON is a hard failure by design.
+- Models not present in the tier file receive the default score of 1 and are usually excluded by the default minimum tier score.
+- The helper script pins specific cron job IDs; those IDs are local-environment details and may need editing for another user.
+- If fewer than the requested number of eligible models survive filtering, the script fails closed and leaves config untouched.
 
 ## Verification
 
-1. Run once with a valid OpenRouter key.
-2. Run once with an invalid key and confirm fail-closed behavior.
-3. Run again with the valid key and confirm idempotency.
-4. Confirm `model.provider` and `model.default` are unchanged.
-5. Confirm `fallback_providers` contains OpenRouter free models.
+1. Run once with a valid OpenRouter key and confirm `fallback_providers` is populated.
+2. Run again with the same inputs and confirm the script reports `no change`.
+3. Verify the state file records the selected models and threshold settings.
+4. Verify the primary model/provider block in Hermes config is unchanged.

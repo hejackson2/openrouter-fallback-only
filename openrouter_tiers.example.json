@@ -1,0 +1,125 @@
+{
+  "_comment": "OpenRouter free-model capability tiers for the Hermes fallback rotator. Higher score = better fallback. Edit this file to override the default score (1) for any model. The rotator only considers :free models from OpenRouter that pass a minimal health probe. Models not in this file receive the default score.",
+  "_scale": {
+    "9-10": "Top tier. Frontier-class / hundreds of billions of params. Use these first.",
+    "7-8": "Strong. Tens to ~120B params, well-tuned for instruction following.",
+    "5-6": "Solid mid-size. ~30B class. Good for routine tasks.",
+    "3-4": "Weak / small. Acceptable as last-resort filler only.",
+    "1-2": "Very small or unreliable. Effectively excluded by default MIN_TIER_SCORE."
+  },
+  "_last_reviewed": "2026-08-29",
+  "defaults": {
+    "min_context_length": 32000,
+    "min_tier_score": 4
+  },
+  "tiers": {
+    "nvidia/nemotron-3-ultra-550b-a55b:free": {
+      "score": 10,
+      "note": "550B-A55B MoE; top tier on free."
+    },
+    "qwen/qwen3-235b-a22b:free": {
+      "score": 10,
+      "note": "235B-A22B MoE; frontier-class."
+    },
+    "google/gemini-2.0-flash-exp:free": {
+      "score": 9,
+      "note": "Gemini 2.0 Flash; strong on free tier."
+    },
+    "nvidia/nemotron-3-super-120b-a12b:free": {
+      "score": 9,
+      "note": "120B-A12B MoE."
+    },
+    "meta-llama/llama-3.3-70b-instruct:free": {
+      "score": 8,
+      "note": "70B Llama 3.3; reliable."
+    },
+    "meta-llama/llama-3.1-70b-instruct:free": {
+      "score": 8,
+      "note": "70B Llama 3.1; solid."
+    },
+    "nvidia/llama-3.1-nemotron-70b-instruct:free": {
+      "score": 8,
+      "note": "70B Nemotron; strong structured output."
+    },
+    "mistralai/mistral-large-latest:free": {
+      "score": 8,
+      "note": "Mistral Large."
+    },
+    "deepseek/deepseek-chat-v3:free": {
+      "score": 8,
+      "note": "DeepSeek V3."
+    },
+    "qwen/qwen-2.5-72b-instruct:free": {
+      "score": 8,
+      "note": "72B Qwen 2.5."
+    },
+    "poolside/laguna-s-2.1:free": {
+      "score": 7,
+      "note": "Poolside Laguna-S 2.1; large MoE."
+    },
+    "google/gemma-4-31b-it:free": {
+      "score": 7,
+      "note": "Gemma 4 31B; solid."
+    },
+    "z-ai/glm-5.2:free": {
+      "score": 7,
+      "note": "GLM 5.2; large."
+    },
+    "openai/gpt-oss-120b:free": {
+      "score": 7,
+      "note": "OpenAI open-weight 120B."
+    },
+    "google/gemma-4-26b-a4b-it:free": {
+      "score": 6,
+      "note": "Gemma 4 26B-A4B MoE."
+    },
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+      "score": 6,
+      "note": "30B-A3B MoE; reasoning-tuned."
+    },
+    "inclusionai/ling-3.0-flash-fin:free": {
+      "score": 5,
+      "note": "Inclusion Ling 3.0 Flash."
+    },
+    "dots-studio/dots-3-note-preview:free": {
+      "score": 5,
+      "note": "DOTS Studio 3 (preview)."
+    },
+    "cohere/north-mini-code:free": {
+      "score": 5,
+      "note": "Cohere North Mini (code)."
+    },
+    "minimax/minimax-m3:free": {
+      "score": 5,
+      "note": "Mid-size Hermes-tested model."
+    },
+    "openai/gpt-oss-20b:free": {
+      "score": 5,
+      "note": "OpenAI open-weight 20B."
+    },
+    "minimax/minimax-m2.7:free": {
+      "score": 4,
+      "note": "MiniMax m2.7; mid-size."
+    },
+    "nvidia/nemotron-3.5-lightning:free": {
+      "score": 4,
+      "note": "Nemotron 3.5 Lightning; fast."
+    },
+    "thinkingmachines/inkling:free": {
+      "score": 4,
+      "note": "Mid-size; last-resort filler."
+    },
+    "nvidia/nemotron-3.5-content-safety:free": {
+      "score": 3,
+      "note": "Content-safety tuned; below default."
+    },
+    "thinkingmachines/inkling-small:free": {
+      "score": 2,
+      "note": "Small; under MIN_TIER_SCORE."
+    },
+    "liquid/lfm-2.5-2.6b:free": {
+      "score": 1,
+      "note": "Very small; always excluded."
+    }
+  }
+}

@@ -93,7 +93,26 @@ class OpenRouterFallbackCheckTest(unittest.TestCase):
         cls.thread.join(timeout=2)
         cls.server.server_close()
 
+    def write_tier_file(self, tempdir: Path) -> Path:
+        tier_path = tempdir / "openrouter_tiers.json"
+        tier_path.write_text(
+            json.dumps(
+                {
+                    "min_context_length": 100000,
+                    "min_tier_score": 4,
+                    "tiers": {
+                        "vendor/medium-context:free": {"score": 9, "note": "preferred"},
+                        "vendor/high-context:free": {"score": 8, "note": "second"},
+                        "vendor/throttled:free": {"score": 4, "note": "allowed but throttled"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return tier_path
+
     def run_script(self, tempdir: Path):
+        tier_path = self.write_tier_file(tempdir)
         env = os.environ.copy()
         env.update(
             {
@@ -104,6 +123,7 @@ class OpenRouterFallbackCheckTest(unittest.TestCase):
                 "HERMES_STATE_PATH": str(tempdir / "state.json"),
                 "HERMES_BACKUP_PATH": str(tempdir / "config.yaml.bak"),
                 "HERMES_HOME": str(tempdir / ".hermes"),
+                "HERMES_TIER_CONFIG_PATH": str(tier_path),
             }
         )
         return subprocess.run(
@@ -131,20 +151,25 @@ class OpenRouterFallbackCheckTest(unittest.TestCase):
 
             first = self.run_script(tempdir)
             self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+            self.assertIn("eligible=3", first.stdout)
+            self.assertIn("min_score=4", first.stdout)
 
             updated = yaml.safe_load((tempdir / "config.yaml").read_text(encoding="utf-8"))
             self.assertEqual(updated["model"], original["model"])
             self.assertEqual(
                 updated["fallback_providers"],
                 [
-                    {"provider": "openrouter", "model": "vendor/high-context:free"},
                     {"provider": "openrouter", "model": "vendor/medium-context:free"},
+                    {"provider": "openrouter", "model": "vendor/high-context:free"},
                     {"provider": "openrouter", "model": "vendor/throttled:free"},
                 ],
             )
             self.assertTrue((tempdir / "config.yaml.bak").exists())
             state = json.loads((tempdir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(len(state["fallbacks"]), 3)
+            self.assertEqual(state["min_tier_score"], 4)
+            self.assertEqual(state["min_context_length"], 100000)
+            self.assertTrue(str(tempdir / "openrouter_tiers.json") in state["tier_config_path"])
 
             second = self.run_script(tempdir)
             self.assertEqual(second.returncode, 0, second.stderr + second.stdout)
@@ -152,6 +177,4 @@ class OpenRouterFallbackCheckTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     unittest.main()

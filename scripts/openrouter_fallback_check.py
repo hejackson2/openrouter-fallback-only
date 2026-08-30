@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""Hermes OpenRouter free-model fallback rotator.
+"""Hermes OpenRouter free-model fallback rotator (tier-list version).
 
 Deterministic, script-only cron job:
-- fetch OpenRouter models
-- filter to :free models with sane metadata
-- probe healthy candidates
-- rank and persist the best fallback chain into Hermes config
-- preserve the existing primary model/provider entirely
-- store previous fallback selection in a local state file for diffing
+  1. Read the user-maintained tier list at ~/.hermes/openrouter_tiers.json
+  2. Fetch OpenRouter models
+  3. Filter to :free models with sane metadata
+  4. Drop any model below MIN_CONTEXT_LENGTH or below MIN_TIER_SCORE
+  5. Probe healthy candidates
+  6. Rank by tier_score desc, then unthrottled first, then context_length desc, then newer
+  7. Persist the best fallback chain into Hermes config
+  8. Preserve the existing primary model/provider entirely
+  9. Store previous fallback selection in a local state file for diffing
+
+The tier list is a small JSON file the user can edit to add/upgrade/downgrade
+specific models. Models not in the list get a default score (1), which is
+effectively excluded by the default MIN_TIER_SCORE.
 """
 
 from __future__ import annotations
@@ -16,6 +23,8 @@ import concurrent.futures as cf
 import datetime as dt
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import shutil
 import tempfile
@@ -30,6 +39,8 @@ HTTP_TIMEOUT = 10
 BATCH_SIZE = 4
 BATCH_SLEEP_SECONDS = 0.25
 DEFAULT_CHAIN_LENGTH = 3
+DEFAULT_TIER_CONFIG_PATH = "~/.hermes/openrouter_tiers.json"
+DEFAULT_TIER_SCORE = 1  # any model not in the tier list gets this
 
 
 def utc_now() -> str:
@@ -55,6 +66,11 @@ def state_path() -> Path:
 
 def backup_path() -> Path:
     return Path(os.environ.get("HERMES_BACKUP_PATH", hermes_home() / "config.yaml.bak")).expanduser()
+
+
+def tier_config_path() -> Path:
+    raw = os.environ.get("HERMES_TIER_CONFIG_PATH", DEFAULT_TIER_CONFIG_PATH)
+    return Path(raw).expanduser()
 
 
 def openrouter_base_url() -> str:
@@ -136,6 +152,59 @@ def load_config(path: Path) -> dict[str, Any]:
 
 def dump_config(data: dict[str, Any]) -> str:
     return yaml.safe_dump(data, sort_keys=False, default_flow_style=False, allow_unicode=True)
+
+
+# ---------- Tier list ------------------------------------------------------
+
+
+def load_tier_config(path: Path) -> dict[str, Any]:
+    """Load the user-maintained tier list. Always succeeds — missing file
+    means use defaults (everything at DEFAULT_TIER_SCORE)."""
+    defaults = {
+        "min_context_length": 32000,
+        "min_tier_score": 4,
+        "tiers": {},
+    }
+    if not path.exists():
+        return defaults
+    try:
+        data = json.loads(path.read_text())
+    except Exception as exc:
+        # Bad JSON is a config error worth failing on — better than silently
+        # treating every model as tier 1 and writing that to fallback_providers.
+        fail(f"diagnostic: tier config parse failed: {path}: {exc}")
+    if not isinstance(data, dict):
+        fail(f"diagnostic: tier config root is not a mapping: {path}")
+    out = dict(defaults)
+    if isinstance(data.get("min_context_length"), int) and data["min_context_length"] > 0:
+        out["min_context_length"] = data["min_context_length"]
+    if isinstance(data.get("min_tier_score"), int) and data["min_tier_score"] >= 0:
+        out["min_tier_score"] = data["min_tier_score"]
+    tiers_in = data.get("tiers", {})
+    if not isinstance(tiers_in, dict):
+        fail(f"diagnostic: tier config 'tiers' is not a mapping: {path}")
+    out["tiers"] = {}
+    for model_id, entry in tiers_in.items():
+        if not isinstance(model_id, str) or not isinstance(entry, dict):
+            continue
+        score = entry.get("score")
+        if not isinstance(score, int):
+            continue
+        out["tiers"][model_id] = {
+            "score": score,
+            "note": entry.get("note", "") if isinstance(entry.get("note"), str) else "",
+        }
+    return out
+
+
+def tier_score_for(model_id: str, tiers: dict[str, dict[str, Any]]) -> int:
+    entry = tiers.get(model_id)
+    if isinstance(entry, dict) and isinstance(entry.get("score"), int):
+        return entry["score"]
+    return DEFAULT_TIER_SCORE
+
+
+# ---------- OpenRouter I/O ------------------------------------------------
 
 
 def env_api_key() -> str:
@@ -267,13 +336,39 @@ def probe_models(models: list[dict[str, Any]], api_key: str) -> list[dict[str, A
     return results
 
 
-def rank_candidates(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def sort_key(m: dict[str, Any]) -> tuple[int, int, int, str]:
-        throttled_rank = 1 if m.get("status") == "throttled" else 0
-        return (throttled_rank, -int(m["context_length"]), -int(m.get("created", 0)), str(m["id"]))
+# ---------- Ranking --------------------------------------------------------
 
-    healthy = [m for m in models if m.get("status") in {"healthy", "throttled"}]
-    return sorted(healthy, key=sort_key)
+
+def rank_candidates(
+    models: list[dict[str, Any]],
+    tier_config: dict[str, Any],
+) -> list[dict[str, Any]]:
+    min_ctx = int(tier_config.get("min_context_length", 32000))
+    min_score = int(tier_config.get("min_tier_score", 4))
+    tiers = tier_config.get("tiers", {})
+
+    def sort_key(m: dict[str, Any]) -> tuple[int, int, int, int, str]:
+        throttled_rank = 1 if m.get("status") == "throttled" else 0
+        score = tier_score_for(m["id"], tiers)
+        # We want highest score first, so negate.
+        return (
+            throttled_rank,
+            -score,
+            -int(m["context_length"]),
+            -int(m.get("created", 0)),
+            str(m["id"]),
+        )
+
+    eligible = []
+    for m in models:
+        if m.get("status") not in {"healthy", "throttled"}:
+            continue
+        if int(m["context_length"]) < min_ctx:
+            continue
+        if tier_score_for(m["id"], tiers) < min_score:
+            continue
+        eligible.append(m)
+    return sorted(eligible, key=sort_key)
 
 
 def desired_fallbacks(top_models: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -293,25 +388,65 @@ def summarize_fallbacks(fallbacks: list[dict[str, str]]) -> str:
     return ", ".join(f"{entry['model']}" for entry in fallbacks)
 
 
+def sync_cron_pins() -> None:
+    """Pin the two weekly agent jobs to the new first fallback.
+
+    Delegated to a small external script so this rotator stays focused on
+    the chain; the script knows which job IDs to update and how to call
+    `hermes cron edit`. Errors here are non-fatal — the chain is already
+    written and the cron jobs can be re-pinned manually if needed.
+    """
+    pin_script = hermes_home() / "scripts" / "pin_cron_to_first_fallback.py"
+    if not pin_script.exists():
+        print("sync_cron_pins: pin script not found; skipping")
+        return
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(pin_script)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except Exception as exc:
+        print(f"sync_cron_pins: failed to invoke pin script: {exc}")
+        return
+    if proc.stdout:
+        for line in proc.stdout.splitlines():
+            print(f"sync_cron_pins: {line}")
+    if proc.returncode != 0:
+        print(
+            f"sync_cron_pins: pin script exited {proc.returncode}: "
+            f"{(proc.stderr or '').strip()}"
+        )
+
+
+# ---------- Main -----------------------------------------------------------
+
+
 def main() -> None:
     cfg_path = config_path()
     st_path = state_path()
     bak_path = backup_path()
+    t_path = tier_config_path()
 
     cfg = load_config(cfg_path)
     api_key = env_api_key()
     chain_length = desired_chain_length()
+    tier_config = load_tier_config(t_path)
 
     raw_models, fetched_count = fetch_models(api_key)
     normalized = [m for m in (normalize_model(x) for x in raw_models if isinstance(x, dict)) if m]
     probed = probe_models(normalized, api_key)
-    ranked = rank_candidates(probed)
+    ranked = rank_candidates(probed, tier_config)
 
     if len(ranked) < chain_length:
         healthy_count = len(ranked)
         fail(
-            f"diagnostic: healthy model count too low: {healthy_count} "
-            f"(need at least {chain_length})"
+            f"diagnostic: eligible model count too low: {healthy_count} "
+            f"(need at least {chain_length}). "
+            f"min_context_length={tier_config['min_context_length']}, "
+            f"min_tier_score={tier_config['min_tier_score']}. "
+            f"Consider lowering min_tier_score in {t_path}."
         )
 
     top_models = ranked[:chain_length]
@@ -335,7 +470,9 @@ def main() -> None:
     if current_matches:
         current_summary = summarize_models(top_models)
         print(
-            f"{ts} no change; fetched={fetched_count} healthy={healthy_count} "
+            f"{ts} no change; fetched={fetched_count} eligible={healthy_count} "
+            f"min_score={tier_config['min_tier_score']} "
+            f"min_ctx={tier_config['min_context_length']} "
             f"fallbacks={current_summary}"
         )
         return
@@ -367,6 +504,9 @@ def main() -> None:
             "timestamp": ts,
             "fallbacks": desired,
             "selected_models": top_models,
+            "tier_config_path": str(t_path),
+            "min_tier_score": tier_config["min_tier_score"],
+            "min_context_length": tier_config["min_context_length"],
         }
         write_atomic_text(st_path, json.dumps(new_state, indent=2, sort_keys=True) + "\n")
     except Exception as exc:
@@ -378,10 +518,13 @@ def main() -> None:
         else "diff: none"
     )
     print(
-        f"{ts} fetched={fetched_count} healthy={healthy_count} "
+        f"{ts} fetched={fetched_count} eligible={healthy_count} "
+        f"min_score={tier_config['min_tier_score']} "
+        f"min_ctx={tier_config['min_context_length']} "
         f"fallbacks={summarize_models(top_models)}"
     )
     print(diff_text)
+    sync_cron_pins()
 
 
 if __name__ == "__main__":
