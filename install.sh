@@ -14,7 +14,14 @@ mkdir -p "$HERMES_HOME/scripts" "$HERMES_HOME/skills/automation/openrouter-fallb
 cp "$ROOT_DIR/scripts/openrouter_fallback_check.py" "$SCRIPT_PATH"
 cp "$ROOT_DIR/scripts/pin_cron_to_first_fallback.py" "$PIN_SCRIPT_PATH"
 cp "$ROOT_DIR/openrouter_tiers.example.json" "$TIER_EXAMPLE_PATH"
+if [ ! -f "$HERMES_HOME/openrouter_tiers.json" ]; then
+  cp "$ROOT_DIR/openrouter_tiers.example.json" "$HERMES_HOME/openrouter_tiers.json"
+fi
 cp "$ROOT_DIR/skills/openrouter-fallback-rotator/SKILL.md" "$SKILL_PATH"
+if [ -d "$ROOT_DIR/skills/openrouter-fallback-rotator/references" ]; then
+  mkdir -p "$HERMES_HOME/skills/automation/openrouter-fallback-rotator/references"
+  cp -r "$ROOT_DIR/skills/openrouter-fallback-rotator/references/"* "$HERMES_HOME/skills/automation/openrouter-fallback-rotator/references/" 2>/dev/null || true
+fi
 chmod +x "$SCRIPT_PATH" "$PIN_SCRIPT_PATH"
 
 echo "Installed:"

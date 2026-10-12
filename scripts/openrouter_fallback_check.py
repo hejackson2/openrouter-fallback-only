@@ -32,7 +32,38 @@ import time
 from typing import Any
 
 import requests
-import yaml
+try:
+    import yaml
+except ImportError:
+    try:
+        import hermes_yaml as yaml
+    except ImportError:
+        from ruamel.yaml import YAML
+
+        class _RuamelYamlAdapter:
+            @staticmethod
+            def safe_load(stream):
+                y = YAML(typ="safe", pure=True)
+                y.version = (1, 1)
+                return y.load(stream)
+
+            @staticmethod
+            def safe_dump(data, stream=None, *, sort_keys=False, default_flow_style=False, allow_unicode=True, width=80):
+                from io import StringIO
+                y = YAML(typ="safe", pure=True)
+                y.default_flow_style = default_flow_style
+                y.allow_unicode = allow_unicode
+                y.width = width
+                y.sort_base_mapping_type_on_output = sort_keys
+                y.indent(mapping=2, sequence=4, offset=2)
+                if stream is not None:
+                    y.dump(data, stream)
+                    return None
+                buf = StringIO()
+                y.dump(data, buf)
+                return buf.getvalue()
+
+        yaml = _RuamelYamlAdapter
 
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 HTTP_TIMEOUT = 10
@@ -69,8 +100,10 @@ def backup_path() -> Path:
 
 
 def tier_config_path() -> Path:
-    raw = os.environ.get("HERMES_TIER_CONFIG_PATH", DEFAULT_TIER_CONFIG_PATH)
-    return Path(raw).expanduser()
+    raw = os.environ.get("HERMES_TIER_CONFIG_PATH")
+    if raw:
+        return Path(raw).expanduser()
+    return hermes_home() / "openrouter_tiers.json"
 
 
 def openrouter_base_url() -> str:

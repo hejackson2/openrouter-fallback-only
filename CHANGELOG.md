@@ -6,7 +6,13 @@ The format is loosely based on Keep a Changelog and uses reverse chronological o
 
 ## [Unreleased]
 
+### Added
+- Added `skills/openrouter-fallback-rotator/references/session-2026-08-29.md` reference notes capturing session background, trade-offs, and capability-based scoring design.
+
 ### Changed
+- Added resilient YAML loader fallback chain to `scripts/openrouter_fallback_check.py` and `scripts/pin_cron_to_first_fallback.py`: attempts `yaml` (PyYAML), then `hermes_yaml`, then `ruamel.yaml`, preventing runtime failures on Hermes package updates or environments without PyYAML.
+- Updated `scripts/openrouter_fallback_check.py` to resolve tier configuration path relative to `HERMES_HOME` when `HERMES_TIER_CONFIG_PATH` is not explicitly set.
+- Updated `install.sh` to install references into the skill directory and seed `$HERMES_HOME/openrouter_tiers.json` if not already present.
 - Updated `scripts/openrouter_fallback_check.py` to make cron-job repinning opt-in via `OPENROUTER_SYNC_CRON_PINS=1` instead of automatic.
 - Updated `README.md` and `skills/openrouter-fallback-rotator/SKILL.md` to document that cron jobs follow the primary model by default unless repinning is explicitly enabled.
 

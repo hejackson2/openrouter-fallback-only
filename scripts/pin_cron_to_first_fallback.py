@@ -33,25 +33,27 @@ PINNED_CRON_IDS = [
 
 
 def load_yaml(path: Path) -> dict:
-    # Avoid pulling in pyyaml if we don't need to; fall back to a minimal parser.
     try:
         import yaml  # type: ignore
         with path.open() as fh:
             data = yaml.safe_load(fh)
-        if not isinstance(data, dict):
-            raise ValueError("config root is not a mapping")
-        return data
     except ImportError:
-        # Minimal YAML parse: just grab the fallback_providers block.
-        text = path.read_text()
-        if "fallback_providers" not in text:
-            return {}
-        # Use a quick PyYAML-free extraction — we only need the providers list.
-        # This is fragile, so prefer the import path when available.
-        raise RuntimeError(
-            "PyYAML is required to read Hermes config. "
-            "Activate the Hermes venv: `source ~/.hermes/venv/bin/activate`."
-        )
+        try:
+            import hermes_yaml  # type: ignore
+            data = hermes_yaml.safe_load(path.read_text(encoding="utf-8"))
+        except ImportError:
+            try:
+                from ruamel.yaml import YAML  # type: ignore
+                y = YAML(typ="safe", pure=True)
+                with path.open("rb") as fh:
+                    data = y.load(fh)
+            except ImportError:
+                raise RuntimeError(
+                    "A YAML parser is required to read Hermes config (yaml, hermes_yaml, or ruamel.yaml)."
+                )
+    if not isinstance(data, dict):
+        raise ValueError("config root is not a mapping")
+    return data
 
 
 def get_first_fallback(cfg: dict) -> dict | None:
